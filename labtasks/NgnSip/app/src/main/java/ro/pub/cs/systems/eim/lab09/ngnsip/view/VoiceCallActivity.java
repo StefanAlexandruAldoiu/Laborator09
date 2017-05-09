@@ -2,6 +2,7 @@ package ro.pub.cs.systems.eim.lab09.ngnsip.view;
 
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.net.Uri;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -10,7 +11,15 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 
+import com.google.android.gms.appindexing.Action;
+import com.google.android.gms.appindexing.AppIndex;
+import com.google.android.gms.appindexing.Thing;
+import com.google.android.gms.common.api.GoogleApiClient;
+
 import org.doubango.ngn.NgnEngine;
+import org.doubango.ngn.events.NgnInviteEventArgs;
+import org.doubango.ngn.events.NgnRegistrationEventArgs;
+import org.doubango.ngn.media.NgnMediaType;
 import org.doubango.ngn.services.INgnConfigurationService;
 import org.doubango.ngn.services.INgnSipService;
 import org.doubango.ngn.sip.NgnAVSession;
@@ -50,12 +59,56 @@ public class VoiceCallActivity extends AppCompatActivity {
     private Button chatButton = null;
 
     private static VoiceCallActivity instance;
+    private IntentFilter callIntentFilter;
+    /**
+     * ATTENTION: This was auto-generated to implement the App Indexing API.
+     * See https://g.co/AppIndexing/AndroidStudio for more information.
+     */
+    private GoogleApiClient client;
+    private VoiceCallBroadcastReceiver callStateBroadcastReceiver;
 
     public static VoiceCallActivity getInstance() {
         return instance;
     }
 
     private RegistrationButtonClickListener registrationButtonClickListener = new RegistrationButtonClickListener();
+
+    /**
+     * ATTENTION: This was auto-generated to implement the App Indexing API.
+     * See https://g.co/AppIndexing/AndroidStudio for more information.
+     */
+    public Action getIndexApiAction() {
+        Thing object = new Thing.Builder()
+                .setName("VoiceCall Page") // TODO: Define a title for the content shown.
+                // TODO: Make sure this auto-generated URL is correct.
+                .setUrl(Uri.parse("http://[ENTER-YOUR-URL-HERE]"))
+                .build();
+        return new Action.Builder(Action.TYPE_VIEW)
+                .setObject(object)
+                .setActionStatus(Action.STATUS_TYPE_COMPLETED)
+                .build();
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+
+        // ATTENTION: This was auto-generated to implement the App Indexing API.
+        // See https://g.co/AppIndexing/AndroidStudio for more information.
+        client.connect();
+        AppIndex.AppIndexApi.start(client, getIndexApiAction());
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+
+        // ATTENTION: This was auto-generated to implement the App Indexing API.
+        // See https://g.co/AppIndexing/AndroidStudio for more information.
+        AppIndex.AppIndexApi.end(client, getIndexApiAction());
+        client.disconnect();
+    }
+
     private class RegistrationButtonClickListener implements Button.OnClickListener {
 
         @Override
@@ -64,22 +117,32 @@ public class VoiceCallActivity extends AppCompatActivity {
             // - set the NGN engine parameters via the configureStack() method
             // - start the NGN engine and register the activity to the SIP service
             // invoke the startNgnEngine() and registerSipService() methods respectively
+            configureStack();
+            if (!startNgnEngine()) {
+                return;
+            }
+            registerSipService();
         }
 
     }
 
     private UnregisterButtonClickListener unregisterButtonClickListener = new UnregisterButtonClickListener();
+
     private class UnregisterButtonClickListener implements Button.OnClickListener {
 
         @Override
         public void onClick(View view) {
             // TODO exercise 5b
             // unregister the SIP service by invoking the unregisterSipService() method
+
+            unregisterSipService();
+
         }
 
     }
 
     private MakeCallButtonClickListener makeCallButtonClickListener = new MakeCallButtonClickListener();
+
     private class MakeCallButtonClickListener implements Button.OnClickListener {
 
         @Override
@@ -101,10 +164,21 @@ public class VoiceCallActivity extends AppCompatActivity {
             // - if the call cannot be made, log the information accordingly
             // hint: use the makeCall() method of the NgnAVSession instance
 
+            ngnAVSession = NgnAVSession.createOutgoingSession(
+                    NgnEngine.getInstance().getSipService().getSipStack(),
+                    NgnMediaType.Audio
+            );
+            if (ngnAVSession.makeCall(validUri)) {
+                callStatusTextView.setText(getResources().getString(R.string.calling));
+                Log.d(Constants.TAG, "Call succeeded");
+            } else {
+                Log.d(Constants.TAG, "Call failed");
+            }
         }
     }
 
     private HangupCallButtonClickListener hangupCallButtonClickListener = new HangupCallButtonClickListener();
+
     private class HangupCallButtonClickListener implements Button.OnClickListener {
 
         @Override
@@ -114,11 +188,15 @@ public class VoiceCallActivity extends AppCompatActivity {
             // this method should check whether the NgnAVSession was previously created
             // hint: use the hangUpCall() method of the NgnAVSession instance
 
+            if (ngnAVSession != null) {
+                ngnAVSession.hangUpCall();
+                Log.d(Constants.TAG, "Hang Up");
+            }
         }
-
     }
 
     private DTMFButtonClickListener dtmfButtonClickListener = new DTMFButtonClickListener();
+
     private class DTMFButtonClickListener implements Button.OnClickListener {
 
         @Override
@@ -137,6 +215,7 @@ public class VoiceCallActivity extends AppCompatActivity {
     }
 
     private ChatButtonClickListener chatButtonClickListener = new ChatButtonClickListener();
+
     private class ChatButtonClickListener implements Button.OnClickListener {
 
         @Override
@@ -161,28 +240,31 @@ public class VoiceCallActivity extends AppCompatActivity {
         }
         ngnSipService = ngnEngine.getSipService();
 
-        registerButton = (Button)findViewById(R.id.register_button);
+        registerButton = (Button) findViewById(R.id.register_button);
         registerButton.setOnClickListener(registrationButtonClickListener);
-        unregisterButton = (Button)findViewById(R.id.unregister_button);
+        unregisterButton = (Button) findViewById(R.id.unregister_button);
         unregisterButton.setOnClickListener(unregisterButtonClickListener);
-        registrationStatusTextView = (TextView)findViewById(R.id.registration_status_text_view);
+        registrationStatusTextView = (TextView) findViewById(R.id.registration_status_text_view);
 
-        SIPAddressEditText = (EditText)findViewById(R.id.SIP_address_edit_text);
-        makeCallButton = (Button)findViewById(R.id.make_call_button);
+        SIPAddressEditText = (EditText) findViewById(R.id.SIP_address_edit_text);
+        makeCallButton = (Button) findViewById(R.id.make_call_button);
         makeCallButton.setOnClickListener(makeCallButtonClickListener);
-        hangUpCallButton = (Button)findViewById(R.id.hang_up_call_button);
+        hangUpCallButton = (Button) findViewById(R.id.hang_up_call_button);
         hangUpCallButton.setOnClickListener(hangupCallButtonClickListener);
-        callStatusTextView = (TextView)findViewById(R.id.call_status_text_view);
+        callStatusTextView = (TextView) findViewById(R.id.call_status_text_view);
 
-        dtmfButton = (Button)findViewById(R.id.dtmf_button);
+        dtmfButton = (Button) findViewById(R.id.dtmf_button);
         dtmfButton.setOnClickListener(dtmfButtonClickListener);
-        dtmfEditText = (EditText)findViewById(R.id.dtmf_edit_text);
+        dtmfEditText = (EditText) findViewById(R.id.dtmf_edit_text);
 
-        chatButton = (Button)findViewById(R.id.chat_button);
+        chatButton = (Button) findViewById(R.id.chat_button);
         chatButton.setOnClickListener(chatButtonClickListener);
 
         enableRegistrationBroadcastReceiver();
         enableVoiceCallBroadcastReceiver();
+        // ATTENTION: This was auto-generated to implement the App Indexing API.
+        // See https://g.co/AppIndexing/AndroidStudio for more information.
+        client = new GoogleApiClient.Builder(this).addApi(AppIndex.API).build();
     }
 
     public void configureStack() {
@@ -240,13 +322,20 @@ public class VoiceCallActivity extends AppCompatActivity {
         // - create a RegistrationBroadcastReceiver instance
         // - create an IntentFilter instance for NgnRegistrationEventArgs.ACTION_REGISTRATION_EVENT action
         // - register the broadcast intent with the intent filter
-
+        registrationBroadcastReceiver = new RegistrationBroadcastReceiver(registrationStatusTextView);
+        registrationIntentFilter = new IntentFilter();
+        registrationIntentFilter.addAction(NgnRegistrationEventArgs.ACTION_REGISTRATION_EVENT);
+        registerReceiver(registrationBroadcastReceiver, registrationIntentFilter);
     }
 
     public void disableRegistrationStateBroadcastReceiver() {
 
         // TODO exercise 6b
         // unregister the RegistrationBroadcastReceiver instance
+        if (registrationBroadcastReceiver != null) {
+            unregisterReceiver(registrationBroadcastReceiver);
+            registrationBroadcastReceiver = null;
+        }
 
     }
 
@@ -256,14 +345,22 @@ public class VoiceCallActivity extends AppCompatActivity {
         // - create a VoiceCallBroadcastReceiver instance
         // - create an IntentFilter instance for NgnInviteEventArgs.ACTION_INVITE_EVENT action
         // - register the broadcast receiver with the intent filter
+        voiceCallBroadcastReceiver = new VoiceCallBroadcastReceiver(SIPAddressEditText, callStatusTextView);
+        voiceCallIntentFilter = new IntentFilter();
+        voiceCallIntentFilter.addAction(NgnInviteEventArgs.ACTION_INVITE_EVENT);
+        registerReceiver(callStateBroadcastReceiver, voiceCallIntentFilter);
 
     }
+
 
     public void disableVoiceCallBroadcastReceiver() {
 
         // TODO exercise 8b
         // unregister the VoiceCallBroadcastReceiver instance
-
+        if (voiceCallIntentFilter != null) {
+            unregisterReceiver(voiceCallBroadcastReceiver);
+            voiceCallIntentFilter = null;
+        }
     }
 
     @Override
